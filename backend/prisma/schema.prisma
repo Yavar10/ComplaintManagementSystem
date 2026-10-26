@@ -1,0 +1,379 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ComplaintStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  ASSIGNED
+  IN_PROGRESS
+  AWAITING_INFORMATION
+  RESOLVED
+  CLOSED
+  REOPENED
+  REJECTED
+}
+
+enum AssignmentType {
+  INITIAL
+  REASSIGNMENT
+  TRANSFER
+  COLLABORATION
+}
+
+enum DepartmentRelationType {
+  PRIMARY
+  COLLABORATING
+  INFORMATION_REQUESTED
+}
+
+enum RelationshipType {
+  POSSIBLE_DUPLICATE
+  RELATED
+  SAME_INSTITUTION
+  FOLLOW_UP
+}
+
+enum ReviewStatus {
+  PENDING
+  CONFIRMED
+  DISMISSED
+}
+
+enum CommentVisibility {
+  INTERNAL
+  PUBLIC
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users                 User[]
+  assignedComplaints    Complaint[]            @relation("AssignedDepartment")
+  complaintAssignments  ComplaintAssignment[]
+  complaintDepartments  ComplaintDepartment[]
+
+  @@map("departments")
+}
+
+model Institution {
+  id              String   @id @default(uuid())
+  institutionName String
+  institutionCode String   @unique
+  institutionType String
+  state           String
+  district        String
+  address         String
+  contactEmail    String?
+  contactPhone    String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  complaints      Complaint[]
+
+  @@index([state, district])
+  @@index([institutionName])
+  @@map("institutions")
+}
+
+model User {
+  id           String      @id @default(uuid())
+  fullName     String
+  email        String      @unique
+  passwordHash String
+  roleId       String
+  departmentId String?
+  isActive     Boolean     @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  role         Role        @relation(fields: [roleId], references: [id])
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  submittedComplaints   Complaint[]           @relation("SubmittedBy")
+  assignedComplaints    Complaint[]           @relation("AssignedOfficer")
+  assignmentsMade       ComplaintAssignment[] @relation("AssignedBy")
+  assignedToAssignments ComplaintAssignment[] @relation("AssignedOfficerRel")
+  collaborationsAdded   ComplaintDepartment[] @relation("AddedBy")
+  commentsWritten       ComplaintComment[]
+  attachmentsUploaded   ComplaintAttachment[]
+  relationshipsReviewed ComplaintRelationship[]
+  notificationsReceived Notification[]
+  auditLogs             AuditLog[]
+
+  @@index([email])
+  @@index([roleId])
+  @@index([departmentId])
+  @@map("users")
+}
+
+model ComplaintCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  complaints  Complaint[]
+  slaPolicies SlaPolicy[]
+
+  @@map("complaint_categories")
+}
+
+model Complaint {
+  id                   String          @id @default(uuid())
+  complaintNumber      String          @unique
+  title                String
+  description          String
+  categoryId           String
+  priority             Priority        @default(MEDIUM)
+  status               ComplaintStatus @default(SUBMITTED)
+  institutionId        String
+  submittedByUserId    String?
+  source               String          @default("PORTAL")
+  assignedDepartmentId String?
+  assignedOfficerId    String?
+  resolutionSummary    String?
+  rejectionReason      String?
+  closureReason        String?
+  reopenReason         String?
+  dueAt                DateTime?
+  resolvedAt           DateTime?
+  closedAt             DateTime?
+  submittedAt          DateTime        @default(now())
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  category             ComplaintCategory     @relation(fields: [categoryId], references: [id])
+  institution          Institution           @relation(fields: [institutionId], references: [id])
+  submittedBy          User?                 @relation("SubmittedBy", fields: [submittedByUserId], references: [id])
+  assignedDepartment   Department?           @relation("AssignedDepartment", fields: [assignedDepartmentId], references: [id])
+  assignedOfficer      User?                 @relation("AssignedOfficer", fields: [assignedOfficerId], references: [id])
+
+  assignments          ComplaintAssignment[]
+  departments          ComplaintDepartment[]
+  comments             ComplaintComment[]
+  attachments          ComplaintAttachment[]
+  sourceRelationships  ComplaintRelationship[] @relation("SourceComplaint")
+  targetRelationships  ComplaintRelationship[] @relation("TargetComplaint")
+  notifications        Notification[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([institutionId])
+  @@index([assignedDepartmentId])
+  @@index([assignedOfficerId])
+  @@index([dueAt])
+  @@index([submittedAt])
+  @@map("complaints")
+}
+
+model ComplaintAssignment {
+  id               String         @id @default(uuid())
+  complaintId      String
+  departmentId     String
+  officerId        String?
+  assignedByUserId String
+  assignmentType   AssignmentType @default(INITIAL)
+  reason           String?
+  startedAt        DateTime       @default(now())
+  endedAt          DateTime?
+  createdAt        DateTime       @default(now())
+
+  complaint        Complaint      @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  department       Department     @relation(fields: [departmentId], references: [id])
+  officer          User?          @relation("AssignedOfficerRel", fields: [officerId], references: [id])
+  assignedBy       User           @relation("AssignedBy", fields: [assignedByUserId], references: [id])
+
+  @@index([complaintId])
+  @@index([departmentId])
+  @@index([officerId])
+  @@map("complaint_assignments")
+}
+
+model ComplaintDepartment {
+  id               String                 @id @default(uuid())
+  complaintId      String
+  departmentId     String
+  relationshipType DepartmentRelationType @default(COLLABORATING)
+  addedByUserId    String
+  createdAt        DateTime               @default(now())
+
+  complaint        Complaint              @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  department       Department             @relation(fields: [departmentId], references: [id])
+  addedBy          User                   @relation("AddedBy", fields: [addedByUserId], references: [id])
+
+  @@unique([complaintId, departmentId])
+  @@map("complaint_departments")
+}
+
+model ComplaintComment {
+  id          String            @id @default(uuid())
+  complaintId String
+  authorUserId String
+  content     String
+  visibility  CommentVisibility @default(INTERNAL)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  complaint   Complaint         @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  author      User              @relation(fields: [authorUserId], references: [id])
+
+  @@index([complaintId])
+  @@map("complaint_comments")
+}
+
+model ComplaintAttachment {
+  id               String   @id @default(uuid())
+  complaintId      String
+  uploadedByUserId String
+  originalFilename String
+  storageKey       String   @unique
+  mimeType         String
+  fileSize         Int
+  createdAt        DateTime @default(now())
+
+  complaint        Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  uploadedBy       User      @relation(fields: [uploadedByUserId], references: [id])
+
+  @@index([complaintId])
+  @@map("complaint_attachments")
+}
+
+model ComplaintRelationship {
+  id                 String           @id @default(uuid())
+  complaintId        String
+  relatedComplaintId String
+  relationshipType   RelationshipType @default(POSSIBLE_DUPLICATE)
+  similarityScore    Float?
+  detectionMethod    String           @default("HEURISTIC_TFIDF")
+  status             ReviewStatus     @default(PENDING)
+  reviewedByUserId   String?
+  reviewedAt         DateTime?
+  reviewNotes        String?
+  createdAt          DateTime         @default(now())
+
+  complaint          Complaint        @relation("SourceComplaint", fields: [complaintId], references: [id], onDelete: Cascade)
+  relatedComplaint   Complaint        @relation("TargetComplaint", fields: [relatedComplaintId], references: [id], onDelete: Cascade)
+  reviewedBy         User?            @relation(fields: [reviewedByUserId], references: [id])
+
+  @@unique([complaintId, relatedComplaintId])
+  @@index([status])
+  @@index([similarityScore])
+  @@map("complaint_relationships")
+}
+
+model Notification {
+  id              String    @id @default(uuid())
+  recipientUserId String
+  complaintId     String?
+  type            String
+  title           String
+  message         String
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  recipient       User       @relation(fields: [recipientUserId], references: [id], onDelete: Cascade)
+  complaint       Complaint? @relation(fields: [complaintId], references: [id], onDelete: SetNull)
+
+  @@index([recipientUserId, readAt])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  actorUserId    String?
+  action         String
+  entityType     String
+  entityId       String
+  previousValues Json?
+  newValues      Json?
+  reason         String?
+  requestId      String?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
+
+  actor          User?    @relation(fields: [actorUserId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SlaPolicy {
+  id                       String             @id @default(uuid())
+  categoryId               String?
+  priority                 Priority           @default(MEDIUM)
+  firstResponseHours       Int                @default(48)
+  resolutionHours          Int                @default(360)
+  escalationThresholdHours Int                @default(24)
+  isActive                 Boolean            @default(true)
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+
+  category                 ComplaintCategory? @relation(fields: [categoryId], references: [id])
+
+  @@unique([categoryId, priority])
+  @@map("sla_policies")
+}

@@ -1,0 +1,24 @@
+# Dependency caches
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Local databases and storage
+.pgdata/
+uploads/
+*.log
+
+# Secrets and environment configurations
+.env
+.env.local
+.env.*.local
+
+# Operating System and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
