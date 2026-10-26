@@ -1,7 +1,16 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+const rawApiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1').trim();
+// Strip trailing slash(es)
+let normalizedBase = rawApiUrl.replace(/\/+$/, '');
+// Ensure it includes the /api/v1 prefix
+if (!normalizedBase.endsWith('/api/v1')) {
+  normalizedBase = `${normalizedBase}/api/v1`;
+}
+const API_BASE = normalizedBase;
 
 export async function apiRequest(endpoint, options = {}) {
-  const url = `${API_BASE}${endpoint}`;
+  // Ensure endpoint starts with single slash
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${API_BASE}${cleanEndpoint}`;
 
   // Retrieve stored token if available
   const token = localStorage.getItem('auth_token');
